@@ -206,9 +206,10 @@
     { k: 'move', label: 'Usual move from the last pitch', note: 'how far and which way they tend to go from their previous number' },
     { k: 'swing', label: 'Reaction to the last swing', note: 'where they go relative to the swing they just saw' },
     { k: 'league', label: 'League-wide move habit', note: 'how all pitchers in the log tend to move from their previous number' },
+    { k: 'exact', label: 'Popular exact numbers', note: 'specific numbers the rest of the league throws unusually often' },
     { k: 'uniform', label: 'No pattern', note: 'every number equally likely' }
   ];
-  const PRIOR = [1, 1, 1, 1.5, 6];           // pseudo-counts: with little history the read stays close to "no pattern"
+  const PRIOR = [1, 1, 1, 1.5, 1, 6];           // pseudo-counts: with little history the read stays close to "no pattern"
   const MIN_PTS = 8;
 
   // Points (numbers + weights) each habit suggests for the pitch after records[0..i-1], given the context.
@@ -258,16 +259,24 @@
     for (let x = 0; x < 1000; x++) out[x] *= 1000 / n;
     return out;
   }
+  // Popular exact numbers: how often the rest of the league has thrown each number, index = number - 1
+  function leagueExact(pitchers, excludeId) {
+    const out = new Float64Array(1000); let n = 0;
+    for (const p of pitchers.values()) { if (p.id === excludeId) continue; for (const r of p.recs) { out[r.pitch - 1]++; n++; } }
+    if (n < 200) return out.fill(1);
+    for (let x = 0; x < 1000; x++) out[x] = 1000 * (out[x] + 0.5) / (n + 500);
+    return out;
+  }
   const lgAt = (lg, ctx, x) => ctx.lastPitch == null ? 1 : lg[sdelta(x, ctx.lastPitch) + 499];
   const ctxOf = r => r.prev ? { lastPitch: r.prev.pitch, lastSwing: r.prev.swing } : { lastPitch: null, lastSwing: null };
 
   // Learn how much weight each habit deserves by replaying the pitcher's history in order:
   // each past pitch is scored using only what came before it.
-  function fit(recs, lg) {
+  function fit(recs, lg, ex) {
     const F = [];
     for (let i = 1; i < recs.length; i++) {
       const ctx = ctxOf(recs[i]), pts = pointsFor(recs, i, ctx), x = recs[i].pitch;
-      F.push([densAt(pts.zones, x), densAt(pts.move, x), densAt(pts.swing, x), lgAt(lg, ctx, x), 1]);
+      F.push([densAt(pts.zones, x), densAt(pts.move, x), densAt(pts.swing, x), lgAt(lg, ctx, x), ex[x - 1], 1]);
     }
     const k = COMPS.length, psum = PRIOR.reduce((a, b) => a + b, 0);
     let w = PRIOR.map(v => v / psum);
@@ -278,12 +287,12 @@
     }
     return { w, scored: F.length };
   }
-  function density(recs, i, ctx, w, lg) {
+  function density(recs, i, ctx, w, lg, ex) {
     const pts = pointsFor(recs, i, ctx);
     const g = [densGrid(pts.zones), densGrid(pts.move), densGrid(pts.swing)];
     const out = new Float64Array(1000);
-    for (let x = 0; x < 1000; x++) out[x] = w[0] * g[0][x] + w[1] * g[1][x] + w[2] * g[2][x] + w[3] * lgAt(lg, ctx, x + 1) + w[4];
-    const used = [!!pts.zones, !!pts.move, !!pts.swing, ctx.lastPitch != null, true];
+    for (let x = 0; x < 1000; x++) out[x] = w[0] * g[0][x] + w[1] * g[1][x] + w[2] * g[2][x] + w[3] * lgAt(lg, ctx, x + 1) + w[4] * ex[x] + w[5];
+    const used = [!!pts.zones, !!pts.move, !!pts.swing, ctx.lastPitch != null, true, true];
     return { dens: out, used };              // dens[x] is for number x+1; mean is 1
   }
   // Best non-overlapping windows of `width` numbers by share of probability
@@ -303,11 +312,11 @@
     return out;
   }
   // Replay: how often did the most likely 300 numbers contain the pitch actually thrown? (guessing = 30%)
-  function backtest(recs, w, lg, maxTests) {
+  function backtest(recs, w, lg, ex, maxTests) {
     let n = 0, hit = 0;
     const start = Math.max(MIN_PTS + 2, recs.length - (maxTests || 150));
     for (let i = start; i < recs.length; i++) {
-      const { dens } = density(recs, i, ctxOf(recs[i]), w, lg);
+      const { dens } = density(recs, i, ctxOf(recs[i]), w, lg, ex);
       const sorted = Float64Array.from(dens).sort(); const thr = sorted[700];
       n++; if (dens[recs[i].pitch - 1] >= thr) hit++;
     }
@@ -335,7 +344,7 @@
   const api = {
     wrap, cdist, sdelta, parseCSV, table, loadPA, buildPitchers, summarize, resultClass,
     OUTCOMES, HIT_TYPES, PIT_TYPES, HIT_NAMES, PIT_NAMES, hitPoints, pitPoints, rangeSizes, bands, outcomeAt, matchupTypes,
-    loadPlayers, loadParks, COMPS, MIN_PTS, leagueMoves, fit, density, topWindows, backtest, swingMap, ctxOf
+    loadPlayers, loadParks, COMPS, MIN_PTS, leagueMoves, leagueExact, fit, density, topWindows, backtest, swingMap, ctxOf
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GIB = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -62,6 +62,8 @@ th.sort{cursor:pointer}
 .row{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:flex-end;margin-bottom:10px}
 label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text2)}
 label.chk{flex-direction:row;align-items:center;gap:6px;font-size:13.5px;color:var(--text)}
+label{max-width:100%}
+select{max-width:min(100%,300px)}
 select,input[type=number]{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-width:0}
 input[type=number]{width:110px}
 button.btn{font:inherit;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px;padding:7px 12px;cursor:pointer}
@@ -127,6 +129,8 @@ ul.plain{margin:6px 0;padding-left:20px} ul.plain li{margin:3px 0}
       <div id="densChart"></div>
       <div class="legend"><span><i></i>Chance of each number, compared with an even spread</span><span><i class="r"></i>Even spread (no read)</span><span><i class="z"></i>Most likely 100-number stretches</span></div>
       <div class="zones" id="zones"></div>
+      <h2 style="margin-top:8px">Likeliest single numbers</h2>
+      <div class="chips" id="exactNums"></div>
       <p class="note" id="btNote"></p>
       <h2 style="margin-top:14px">What the read is built from</h2>
       <div id="weights"></div>
@@ -134,7 +138,7 @@ ul.plain{margin:6px 0;padding-left:20px} ul.plain li{margin:3px 0}
 
     <div class="card">
       <h2>Swing map for a matchup</h2>
-      <p class="hint">Combines the read above with the rulebook's result ranges for the batter and pitcher types. Fielders are not included, so real ranges differ by a few points.</p>
+      <p class="hint">Combines the read above with the rulebook's result ranges for the batter and pitcher types. Fielders are not included: on their own these ranges reproduce about three in four Season 2 results, and the misses land in a neighbouring result.</p>
       <div class="row">
         <label>Batter (Season 2 roster)<select id="batter"></select></label>
         <label>Park<select id="park"></select></label>
@@ -179,7 +183,7 @@ ul.plain{margin:6px 0;padding-left:20px} ul.plain li{margin:3px 0}
         <li>Auto strikeouts and auto results have no pitch number and are skipped.</li>
       </ul>
       <h2 style="margin-top:14px">How the next pitch read works</h2>
-      <p class="note" style="margin-top:2px">The read blends five things: the pitcher's favourite areas, their usual move from their last pitch, where they go relative to the swing they just saw, how the whole league moves from pitch to pitch, and plain chance. The blend is set by replaying the pitcher's own history in order and seeing which of those would have pointed at the pitch that was actually thrown. A pitcher with little history or no real habit ends up close to an even spread. The accuracy line under the chart reports how the read would have done on their past pitches; because the blend was set on that same history, it flatters the read somewhat.</p>
+      <p class="note" style="margin-top:2px">The read blends six things: the pitcher's favourite areas, their usual move from their last pitch, where they go relative to the swing they just saw, how the whole league moves from pitch to pitch, the exact numbers the league throws unusually often, and plain chance. The blend is set by replaying the pitcher's own history in order and seeing which of those would have pointed at the pitch that was actually thrown. A pitcher with little history or no real habit ends up close to an even spread. The accuracy line under the chart reports how the read would have done on their past pitches; because the blend was set on that same history, it flatters the read somewhat.</p>
       <p class="note">Rule 1.7 of the rulebook strongly discourages using AI or digital random number generators to choose pitches and swings. This page does not choose a number; it summarises the public log.</p>
     </div>
   </section>

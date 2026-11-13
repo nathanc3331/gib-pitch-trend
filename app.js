@@ -95,7 +95,7 @@
     let d = `M${x(1)},${y(v[0])}`; for (let i = 1; i < 1000; i++) d += `L${x(i + 1).toFixed(1)},${y(v[i]).toFixed(1)}`;
     s += `<path d="${d} L${x(1000)},${H - B} L${x(1)},${H - B} Z" fill="var(--s1)" opacity=".12"/><path d="${d}" fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round"/>`;
     s += `<line class="ref" x1="${L}" x2="${W - R}" y1="${y(o.base)}" y2="${y(o.base)}"/>`;
-    s += `<text x="${L - 5}" y="${y(o.base) + 4}" text-anchor="end">${esc(o.fmt(o.base))}</text><text x="${L - 5}" y="${y(max / 1.1) + 4}" text-anchor="end">${esc(o.fmt(max / 1.1))}</text>`;
+    s += `<text x="${L - 5}" y="${y(o.base) + 4}" text-anchor="end">${esc(o.fmt(o.base))}</text>` + (max / 1.1 > o.base * 1.25 ? `<text x="${L - 5}" y="${y(max / 1.1) + 4}" text-anchor="end">${esc(o.fmt(max / 1.1))}</text>` : '');
     (o.marks || []).forEach(m => { s += `<line x1="${x(m.n)}" x2="${x(m.n)}" y1="${T}" y2="${H - B}" stroke="var(--text2)" stroke-width="1.5"/><text x="${x(m.n)}" y="${T + 10}" text-anchor="${m.n > 880 ? 'end' : 'start'}" dx="${m.n > 880 ? -5 : 5}">${esc(m.t)}</text>`; });
     s += `<line class="xh" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--text)" stroke-width="1" visibility="hidden"/><rect class="hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg>`;
     el.innerHTML = s;
@@ -164,8 +164,8 @@
   }
   function getFit(p) {
     if (!fitCache.has(p.id)) {
-      const lg = G.leagueMoves(pitchers, p.id), f = G.fit(p.recs, lg);
-      fitCache.set(p.id, { lg, w: f.w, bt: G.backtest(p.recs, f.w, lg, 150) });
+      const lg = G.leagueMoves(pitchers, p.id), ex = G.leagueExact(pitchers, p.id), f = G.fit(p.recs, lg, ex);
+      fitCache.set(p.id, { lg, ex, w: f.w, bt: G.backtest(p.recs, f.w, lg, ex, 150) });
     }
     return fitCache.get(p.id);
   }
@@ -195,16 +195,18 @@
   function renderRead() {
     const p = pitchers.get(state.pid); if (!p) return;
     const f = getFit(p), ctx = { lastPitch: readNum('lastPitch'), lastSwing: readNum('lastSwing') };
-    const { dens, used } = G.density(p.recs, p.recs.length, ctx, f.w, f.lg);
+    const { dens, used } = G.density(p.recs, p.recs.length, ctx, f.w, f.lg, f.ex);
     lastDens = dens;
     // weights of habits that cannot apply right now (no last pitch or swing entered) fall back to "no pattern"
-    const eff = f.w.slice(); used.forEach((u, i) => { if (!u) { eff[4] += eff[i]; eff[i] = 0; } });
+    const eff = f.w.slice(); used.forEach((u, i) => { if (!u) { eff[5] += eff[i]; eff[i] = 0; } });
     const zones = G.topWindows(dens, 100, 3);
-    const flat = eff[4] > 0.85;
+    const flat = eff[5] > 0.85;
     $('readWarn').innerHTML = p.recs.length < 25 ? `<p class="warn">Only ${p.recs.length} pitches on record, so this read leans heavily on an even spread.</p>` : flat ? '<p class="warn">This pitcher shows no strong habit in the log. Treat every number as close to equally likely.</p>' : '';
     const marks = []; if (ctx.lastPitch) marks.push({ n: ctx.lastPitch, t: 'last pitch' }); if (ctx.lastSwing) marks.push({ n: ctx.lastSwing, t: 'last swing' });
     curve($('densChart'), { vals: dens, base: 1, zones, marks, fmt: v => v.toFixed(1) + '×', label: 'Chance of each pitch number', tip: (n, v) => `Number <b>${n}</b>: ${v.toFixed(2)}× an even chance` });
     $('zones').innerHTML = zones.map((z, i) => `<div class="zone"><b>${rangeTxt(z)}</b><span>${pct(z.p, 1)} chance the pitch is here<br>${(z.p / 0.1).toFixed(1)}× an even spread (10%)</span></div>`).join('');
+    const singles = Array.from(dens, (v, i) => [i + 1, v]).sort((x, y) => y[1] - x[1]).slice(0, 10);
+    $('exactNums').innerHTML = singles[0][1] < 1.5 ? '<span class="hint">No single number stands out.</span>' : singles.filter(x => x[1] >= 1.5).map(x => `<span class="chip">${x[0]} <small>${x[1].toFixed(1)}× even chance</small></span>`).join('');
     const bt = f.bt;
     $('btNote').innerHTML = bt.n >= 10 ? `Replayed over their last ${bt.n} pitches, the 300 numbers this read rated most likely contained the actual pitch <b>${pct(bt.rate)}</b> of the time. Guessing would get 30%.` : 'Not enough history yet to check how this read would have done.';
     $('weights').innerHTML = G.COMPS.map((c, i) => `<div class="wbar" data-tip="${esc(c.note)}"><span>${c.label}${!used[i] && f.w[i] > 0.005 ? ' <small style="color:var(--muted)">(needs last ' + (c.k === 'swing' ? 'swing' : 'pitch') + ')</small>' : ''}</span><div><i style="width:${(100 * eff[i]).toFixed(1)}%"></i></div><span>${pct(eff[i])}</span></div>`).join('');
