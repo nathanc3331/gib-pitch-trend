@@ -1,0 +1,43 @@
+name: Update league data
+
+on:
+  schedule:
+    - cron: "23 */2 * * *"   # every two hours
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["scripts/**", ".github/workflows/**"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download sheets
+        id: fetch
+        run: python3 scripts/fetch_data.py
+        continue-on-error: true
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "Update league data"
+            git pull --rebase
+            git push
+          fi
+      - name: Report download problems
+        if: steps.fetch.outcome == 'failure'
+        run: |
+          echo "One or more sheets could not be downloaded; the previous copy was kept."
+          exit 1
