@@ -147,7 +147,7 @@
       <div class="card half"><h2>First pitch of a game</h2><p class="hint">${one ? 'Their' : "Each pitcher's"} opening number, by block of 100 (${L.firsts} opener${L.firsts === 1 ? '' : 's'}).</p><div id="lgFirst"></div>${leg('Openers')}</div>
       <div class="card half"><h2>After a hit, a walk or an out</h2><p class="hint">How far the next pitch moves depending on what the last one led to.</p><div class="scroll"><table id="lgAfter"></table></div></div>
       <div class="card half"><h2>Last digit of the pitch</h2><p class="hint">People are not random: some endings get picked more than others.</p><div id="lgDigit"></div><h2 style="margin-top:12px">${one ? 'Numbers thrown more than once' : 'Most repeated numbers'}</h2><div class="chips" id="lgTop"></div></div>
-      ${one ? '<div class="card"><h2>Latest pitches</h2><div class="scroll"><table id="lgLog"></table></div></div>' : ''}
+      ${one ? '<div class="card"><h2>Latest pitches</h2><p class="hint">Newest first, one block per game. Moves are only measured within a game.</p><div class="scroll"><table id="lgLog"></table></div></div>' : ''}
       <div class="card"><h2>Every pitcher</h2><p class="hint">Click a pitcher to see their trends. Click a column heading to sort.</p><div class="scroll"><table id="lgPitchers"></table></div></div>`;
     const even = n => new Array(n).fill(1 / n);
     bars($('lgHist'), { values: share(L.hist50, L.n), counts: L.hist50, labels: L.hist50.map((_, i) => (i * 50 + 1) + '–' + (i * 50 + 50)), short: L.hist50.map((_, i) => i * 50 + 1), ref: ref(league.hist50, league.n, even(20)), refName: one ? 'League' : 'Even spread', axis: 'Pitch number (block starts at)' });
@@ -160,9 +160,18 @@
     if (one) pitchLog($('lgLog'), one);
     pitcherTable();
   }
+  // Latest pitches, newest first, grouped under a heading for each game (whole games, until about 30 pitches are shown)
   function pitchLog(el, p) {
-    el.innerHTML = '<tr><th>Season</th><th>Game</th><th>Inning</th><th>Batter</th><th class="n">Pitch</th><th class="n">Move</th><th class="n">Swing</th><th class="n">Diff</th><th>Result</th></tr>' +
-      p.recs.slice(-30).reverse().map(r => { const mv = r.prev ? G.sdelta(r.pitch, r.prev.pitch) : null; return `<tr><td>${r.season}</td><td>${esc(r.game.split('-')[1])}</td><td>${esc(r.inning)}</td><td>${esc(r.hitter)}</td><td class="n"><b>${r.pitch}</b></td><td class="n">${mv == null ? 'first' : (mv > 0 ? '+' : '') + mv}</td><td class="n">${r.swing == null ? '–' : r.swing}</td><td class="n">${r.swing == null ? '–' : G.cdist(r.pitch, r.swing)}</td><td>${esc(r.exact)}</td></tr>`; }).join('');
+    const games = [];
+    for (const r of p.recs) { const g = games[games.length - 1]; if (g && g.id === r.game) g.recs.push(r); else games.push({ id: r.game, recs: [r] }); }
+    let shown = 0, html = '';
+    for (let i = games.length - 1; i >= 0 && shown < 30; i--) {
+      const g = games[i], f = g.recs[0], opp = [...new Set(g.recs.map(r => r.bteam).filter(Boolean))].join('/');
+      shown += g.recs.length;
+      html += `<tr class="game"><td colspan="7">Season ${f.season} · Game ${esc(g.id.split('-')[1])}${opp ? ' · vs ' + esc(opp) : ''} · ${g.recs.length} pitch${g.recs.length === 1 ? '' : 'es'}</td></tr>` +
+        g.recs.slice().reverse().map(r => { const mv = r.prev ? G.sdelta(r.pitch, r.prev.pitch) : null; return `<tr><td>${esc(r.inning)}</td><td>${esc(r.hitter)}</td><td class="n"><b>${r.pitch}</b></td><td class="n">${mv == null ? 'first of game' : (mv > 0 ? '+' : '') + mv}</td><td class="n">${r.swing == null ? '–' : r.swing}</td><td class="n">${r.swing == null ? '–' : G.cdist(r.pitch, r.swing)}</td><td>${esc(r.exact)}</td></tr>`; }).join('');
+    }
+    el.innerHTML = '<tr><th>Inning</th><th>Batter</th><th class="n">Pitch</th><th class="n">Move</th><th class="n">Swing</th><th class="n">Diff</th><th>Result</th></tr>' + html;
   }
   function afterTable(el, S, ref) {
     const row = (k, name) => { const g = S.after[k], r = ref && ref.after[k]; return `<tr><td>${name}</td><td class="n">${g.n}</td><td class="n">${g.n ? num(g.sum / g.n) : '–'}</td><td class="n">${g.n ? pct(g.near / g.n) : '–'}</td>${ref ? `<td class="n">${r.n ? num(r.sum / r.n) : '–'}</td>` : ''}</tr>`; };

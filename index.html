@@ -57,6 +57,7 @@ th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-
 th{color:var(--text2);font-weight:600;font-size:12px}
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .scroll{overflow-x:auto}
+tr.game td{background:var(--bg);font-weight:600;border-top:2px solid var(--text2);border-bottom:1px solid var(--line);padding-top:8px}
 tr.click{cursor:pointer} tr.click:hover td{background:var(--s1soft)}
 th.sort{cursor:pointer}
 .row{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:flex-end;margin-bottom:10px}
@@ -161,7 +162,7 @@ ul.plain{margin:6px 0;padding-left:20px} ul.plain li{margin:3px 0}
     <div class="card half"><h2>How far they move from their last pitch</h2><p class="hint">Shortest distance around the 1–1000 circle, same game only.</p><div id="pMove"></div><div class="legend"><span><i></i>This pitcher</span><span><i class="r"></i>League</span></div></div>
     <div class="card half"><h2>Distance from the swing they just saw</h2><p class="hint">Small = they go near the last swing; large = they run from it.</p><div id="pOff"></div><div class="legend"><span><i></i>This pitcher</span><span><i class="r"></i>League</span></div></div>
     <div class="card half"><h2>After a hit, a walk or an out</h2><p class="hint">How far the next pitch moves depending on what the last one led to.</p><div class="scroll"><table id="pAfter"></table></div><h2 style="margin-top:14px">Numbers thrown more than once</h2><div class="chips" id="pTop"></div></div>
-    <div class="card"><h2>Latest pitches</h2><div class="scroll"><table id="pLog"></table></div></div>
+    <div class="card"><h2>Latest pitches</h2><p class="hint">Newest first, one block per game. Moves are only measured within a game.</p><div class="scroll"><table id="pLog"></table></div></div>
   </section>
 
   <section id="v-rules" class="grid" hidden>
