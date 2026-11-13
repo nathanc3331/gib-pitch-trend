@@ -10,7 +10,7 @@
   const MOVE_CHANCE = [0.101, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.099];
   const H100 = ['1–100', '101–200', '201–300', '301–400', '401–500', '501–600', '601–700', '701–800', '801–900', '901–1000'];
 
-  const state = { season: 'all', view: 'league', pid: null, sort: 'n' };
+  const state = { season: 'all', view: 'league', pid: null, trendPid: '', sort: 'n' };
   let PAS = [], PLAYERS = new Map(), PARKS = [], pitchers = new Map(), league = null, fitCache = new Map();
 
   // ---------- data ----------
@@ -113,32 +113,56 @@
 
   // ---------- league view ----------
   function renderLeague() {
-    const L = league, el = $('v-league');
-    if (!L.n) { el.innerHTML = '<div class="card">No pitches logged for this season yet.</div>'; return; }
+    const el = $('v-league');
+    if (!league.n) { el.innerHTML = '<div class="card">No pitches logged for this season yet.</div>'; return; }
+    if (!pitchers.has(state.trendPid)) state.trendPid = '';
+    const one = pitchers.get(state.trendPid), L = one ? one.sum : league;
     const sLabel = state.season === 'all' ? 'both seasons' : 'Season ' + state.season;
+    const list = [...pitchers.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const who = one ? esc(one.name) : 'pitchers', their = one ? 'their' : 'the';
+    // reference line: the league when one pitcher is shown, plain chance when the whole league is shown
+    const refName = one ? 'League' : 'Random';
+    const ref = (lg, n, chance) => one ? share(lg, n) : chance;
+    const cmp = (lgVal, rnd) => one ? 'league ' + lgVal + ', random ' + rnd : 'random would be ' + rnd;
+    const leg = name => `<div class="legend"><span><i></i>${one ? 'This pitcher' : name}</span><span><i class="r"></i>${one ? 'League' : 'Even spread / random'}</span></div>`;
     el.innerHTML = `
-      <div class="tiles">
-        ${tile(L.n.toLocaleString(), 'pitches logged', L.pitchers + ' pitchers, ' + L.games + ' games, ' + sLabel)}
-        ${tile(num(L.avgMove), 'average move from the last pitch', 'random would be ' + RAND_MOVE)}
-        ${tile(pct(L.near100, 1), 'stay within 100 of their last pitch', 'random would be ' + pct(RAND_NEAR, 1))}
-        ${tile(pct(L.offNear, 1), 'land within 100 of the swing just seen', 'random would be ' + pct(RAND_NEAR, 1))}
-        ${tile(pct(L.round0, 1), 'of pitches end in 0', 'random would be 10%')}
+      <div class="card">
+        <div class="row" style="margin:0">
+          <label>Show trends for<select id="trendPitcher"><option value="">All pitchers (league)</option>${list.map(p => `<option value="${esc(p.id)}"${p.id === state.trendPid ? ' selected' : ''}>${esc(p.name)} (${p.recs.length})</option>`).join('')}</select></label>
+          ${one ? `<button class="btn" id="toScout">Next pitch read for ${esc(one.name)}</button><button class="btn" id="toAll">Back to all pitchers</button>` : ''}
+          <span class="hint" style="margin:0 0 8px">${one ? esc([one.team, 'seasons ' + [...one.seasons].join(' & ')].filter(Boolean).join(' · ')) + '. Dashed lines show the league for comparison.' : 'Pick a pitcher to see every chart below for that pitcher only.'}</span>
+        </div>
+        ${one && L.n < 30 ? `<p class="warn" style="margin:10px 0 0">Only ${L.n} pitches on record for this pitcher, so these charts are noisy.</p>` : ''}
       </div>
-      <div class="card half"><h2>Where pitches land</h2><p class="hint">Share of all pitches in each block of 50 numbers.</p><div id="lgHist"></div><div class="legend"><span><i></i>Pitches</span><span><i class="r"></i>Even spread</span></div></div>
-      <div class="card half"><h2>How far pitchers move from their last pitch</h2><p class="hint">Shortest distance around the 1–1000 circle, same game only.</p><div id="lgMove"></div><div class="legend"><span><i></i>Pitches</span><span><i class="r"></i>Random</span></div></div>
-      <div class="card half"><h2>Distance from the swing they just saw</h2><p class="hint">Small = pitchers go near the last swing; large = they run from it.</p><div id="lgOff"></div><div class="legend"><span><i></i>Pitches</span><span><i class="r"></i>Random</span></div></div>
-      <div class="card half"><h2>First pitch of a game</h2><p class="hint">Each pitcher's opening number, by block of 100 (${L.firsts} openers).</p><div id="lgFirst"></div><div class="legend"><span><i></i>Openers</span><span><i class="r"></i>Even spread</span></div></div>
+      <div class="tiles">
+        ${tile(L.n.toLocaleString(), 'pitches logged', one ? new Set(one.recs.map(r => r.game)).size + ' games, ' + sLabel : league.pitchers + ' pitchers, ' + league.games + ' games, ' + sLabel)}
+        ${tile(num(L.avgMove), 'average move from ' + their + ' last pitch', cmp(num(league.avgMove), RAND_MOVE))}
+        ${tile(pct(L.near100, 1), 'stay within 100 of ' + their + ' last pitch', cmp(pct(league.near100, 1), pct(RAND_NEAR, 1)))}
+        ${tile(pct(L.offNear, 1), 'land within 100 of the swing just seen', cmp(pct(league.offNear, 1), pct(RAND_NEAR, 1)))}
+        ${tile(pct(L.round0, 1), 'of pitches end in 0', cmp(pct(league.round0, 1), '10%'))}
+      </div>
+      <div class="card half"><h2>Where ${one ? 'their' : ''} pitches land</h2><p class="hint">Share of ${one ? 'their' : 'all'} pitches in each block of 50 numbers.</p><div id="lgHist"></div>${leg('Pitches')}</div>
+      <div class="card half"><h2>How far ${one ? 'they move' : 'pitchers move'} from their last pitch</h2><p class="hint">Shortest distance around the 1–1000 circle, same game only.</p><div id="lgMove"></div>${leg('Pitches')}</div>
+      <div class="card half"><h2>Distance from the swing they just saw</h2><p class="hint">Small = ${one ? 'they go' : 'pitchers go'} near the last swing; large = they run from it.</p><div id="lgOff"></div>${leg('Pitches')}</div>
+      <div class="card half"><h2>First pitch of a game</h2><p class="hint">${one ? 'Their' : "Each pitcher's"} opening number, by block of 100 (${L.firsts} opener${L.firsts === 1 ? '' : 's'}).</p><div id="lgFirst"></div>${leg('Openers')}</div>
       <div class="card half"><h2>After a hit, a walk or an out</h2><p class="hint">How far the next pitch moves depending on what the last one led to.</p><div class="scroll"><table id="lgAfter"></table></div></div>
-      <div class="card half"><h2>Last digit of the pitch</h2><p class="hint">People are not random: some endings get picked more than others.</p><div id="lgDigit"></div><h2 style="margin-top:12px">Most repeated numbers</h2><div class="chips" id="lgTop"></div></div>
-      <div class="card"><h2>Every pitcher</h2><p class="hint">Click a pitcher to scout them. Click a column heading to sort.</p><div class="scroll"><table id="lgPitchers"></table></div></div>`;
-    bars($('lgHist'), { values: share(L.hist50, L.n), counts: L.hist50, labels: L.hist50.map((_, i) => (i * 50 + 1) + '–' + (i * 50 + 50)), short: L.hist50.map((_, i) => i * 50 + 1), ref: new Array(20).fill(0.05), refName: 'Even spread', axis: 'Pitch number (block starts at)' });
-    bars($('lgMove'), { values: share(L.move50, L.moves), counts: L.move50, labels: MOVE_LABELS, ref: MOVE_CHANCE, refName: 'Random', axis: 'Distance from previous pitch' });
-    bars($('lgOff'), { values: share(L.offs50, L.offs), counts: L.offs50, labels: MOVE_LABELS, ref: MOVE_CHANCE, refName: 'Random', axis: 'Distance from previous swing' });
-    bars($('lgFirst'), { values: share(L.firstHist, L.firsts), counts: L.firstHist, labels: H100, short: H100.map(s => s.split('–')[0]), ref: new Array(10).fill(0.1), refName: 'Even spread', axis: 'Pitch number (block starts at)' });
-    bars($('lgDigit'), { h: 150, values: share(L.endDigit, L.n), counts: L.endDigit, labels: L.endDigit.map((_, i) => 'Ends in ' + i), short: L.endDigit.map((_, i) => i), ref: new Array(10).fill(0.1), refName: 'Even spread' });
-    afterTable($('lgAfter'), L);
+      <div class="card half"><h2>Last digit of the pitch</h2><p class="hint">People are not random: some endings get picked more than others.</p><div id="lgDigit"></div><h2 style="margin-top:12px">${one ? 'Numbers thrown more than once' : 'Most repeated numbers'}</h2><div class="chips" id="lgTop"></div></div>
+      ${one ? '<div class="card"><h2>Latest pitches</h2><div class="scroll"><table id="lgLog"></table></div></div>' : ''}
+      <div class="card"><h2>Every pitcher</h2><p class="hint">Click a pitcher to see their trends. Click a column heading to sort.</p><div class="scroll"><table id="lgPitchers"></table></div></div>`;
+    const even = n => new Array(n).fill(1 / n);
+    bars($('lgHist'), { values: share(L.hist50, L.n), counts: L.hist50, labels: L.hist50.map((_, i) => (i * 50 + 1) + '–' + (i * 50 + 50)), short: L.hist50.map((_, i) => i * 50 + 1), ref: ref(league.hist50, league.n, even(20)), refName: one ? 'League' : 'Even spread', axis: 'Pitch number (block starts at)' });
+    bars($('lgMove'), { values: share(L.move50, L.moves), counts: L.move50, labels: MOVE_LABELS, ref: ref(league.move50, league.moves, MOVE_CHANCE), refName, axis: 'Distance from previous pitch' });
+    bars($('lgOff'), { values: share(L.offs50, L.offs), counts: L.offs50, labels: MOVE_LABELS, ref: ref(league.offs50, league.offs, MOVE_CHANCE), refName, axis: 'Distance from previous swing' });
+    bars($('lgFirst'), { values: share(L.firstHist, L.firsts), counts: L.firstHist, labels: H100, short: H100.map(s => s.split('–')[0]), ref: ref(league.firstHist, league.firsts, even(10)), refName: one ? 'League' : 'Even spread', axis: 'Pitch number (block starts at)' });
+    bars($('lgDigit'), { h: 150, values: share(L.endDigit, L.n), counts: L.endDigit, labels: L.endDigit.map((_, i) => 'Ends in ' + i), short: L.endDigit.map((_, i) => i), ref: ref(league.endDigit, league.n, even(10)), refName: one ? 'League' : 'Even spread' });
+    afterTable($('lgAfter'), L, one ? league : null);
     $('lgTop').innerHTML = L.top.map(t => `<span class="chip">${t[0]} <small>×${t[1]}</small></span>`).join('') || '<span class="hint">No number has been thrown twice.</span>';
+    if (one) pitchLog($('lgLog'), one);
     pitcherTable();
+  }
+  function pitchLog(el, p) {
+    el.innerHTML = '<tr><th>Season</th><th>Game</th><th>Inning</th><th>Batter</th><th class="n">Pitch</th><th class="n">Move</th><th class="n">Swing</th><th class="n">Diff</th><th>Result</th></tr>' +
+      p.recs.slice(-30).reverse().map(r => { const mv = r.prev ? G.sdelta(r.pitch, r.prev.pitch) : null; return `<tr><td>${r.season}</td><td>${esc(r.game.split('-')[1])}</td><td>${esc(r.inning)}</td><td>${esc(r.hitter)}</td><td class="n"><b>${r.pitch}</b></td><td class="n">${mv == null ? 'first' : (mv > 0 ? '+' : '') + mv}</td><td class="n">${r.swing == null ? '–' : r.swing}</td><td class="n">${r.swing == null ? '–' : G.cdist(r.pitch, r.swing)}</td><td>${esc(r.exact)}</td></tr>`; }).join('');
   }
   function afterTable(el, S, ref) {
     const row = (k, name) => { const g = S.after[k], r = ref && ref.after[k]; return `<tr><td>${name}</td><td class="n">${g.n}</td><td class="n">${g.n ? num(g.sum / g.n) : '–'}</td><td class="n">${g.n ? pct(g.near / g.n) : '–'}</td>${ref ? `<td class="n">${r.n ? num(r.sum / r.n) : '–'}</td>` : ''}</tr>`; };
@@ -152,7 +176,7 @@
     const k = state.sort;
     rows.sort((a, b) => k === 'name' || k === 'team' ? String(a[k]).localeCompare(b[k]) : k === 'fav' ? b.favO.share - a.favO.share : (b[k] == null ? -1 : b[k]) - (a[k] == null ? -1 : a[k]));
     $('lgPitchers').innerHTML = '<tr>' + cols.map(c => `<th class="sort${c[0] === 'name' || c[0] === 'team' ? '' : ' n'}" data-k="${c[0]}">${c[1]}${k === c[0] ? ' ▾' : ''}</th>`).join('') + '</tr>' +
-      rows.map(r => `<tr class="click" data-id="${esc(r.id)}"><td>${esc(r.name)}</td><td>${esc(r.team)}</td><td class="n">${r.n}</td><td class="n">${num(r.avgMove)}</td><td class="n">${pct(r.near100)}</td><td class="n">${pct(r.offNear)}</td><td class="n">${r.favO.label} (${pct(r.favO.share)})</td></tr>`).join('');
+      rows.map(r => `<tr class="click" data-id="${esc(r.id)}"${r.id === state.trendPid ? ' style="font-weight:600"' : ''}><td>${esc(r.name)}</td><td>${esc(r.team)}</td><td class="n">${r.n}</td><td class="n">${num(r.avgMove)}</td><td class="n">${pct(r.near100)}</td><td class="n">${pct(r.offNear)}</td><td class="n">${r.favO.label} (${pct(r.favO.share)})</td></tr>`).join('');
   }
 
   // ---------- pitcher view ----------
@@ -187,9 +211,7 @@
     bars($('pOff'), { values: share(S.offs50, S.offs), counts: S.offs50, labels: MOVE_LABELS, ref: share(league.offs50, league.offs), refName: 'League', axis: 'Distance from previous swing' });
     afterTable($('pAfter'), S, league);
     $('pTop').innerHTML = S.top.map(t => `<span class="chip">${t[0]} <small>×${t[1]}</small></span>`).join('') || '<span class="hint">None yet.</span>';
-    const recent = p.recs.slice(-30).reverse();
-    $('pLog').innerHTML = '<tr><th>Season</th><th>Game</th><th>Inning</th><th>Batter</th><th class="n">Pitch</th><th class="n">Move</th><th class="n">Swing</th><th class="n">Diff</th><th>Result</th></tr>' +
-      recent.map(r => { const mv = r.prev ? G.sdelta(r.pitch, r.prev.pitch) : null; return `<tr><td>${r.season}</td><td>${esc(r.game.split('-')[1])}</td><td>${esc(r.inning)}</td><td>${esc(r.hitter)}</td><td class="n"><b>${r.pitch}</b></td><td class="n">${mv == null ? 'first' : (mv > 0 ? '+' : '') + mv}</td><td class="n">${r.swing == null ? '–' : r.swing}</td><td class="n">${r.swing == null ? '–' : G.cdist(r.pitch, r.swing)}</td><td>${esc(r.exact)}</td></tr>`; }).join('');
+    pitchLog($('pLog'), p);
     renderRead();
   }
   function renderRead() {
@@ -269,10 +291,14 @@
     state.season = b.dataset.s; document.querySelectorAll('#season button').forEach(x => x.setAttribute('aria-pressed', x === b));
     rebuild();
   });
+  const openScout = id => { state.pid = id; $('pitcher').value = id; $('lastPitch').value = ''; $('lastSwing').value = ''; state.view = 'pitcher'; render(); window.scrollTo(0, 0); };
   $('v-league').addEventListener('click', e => {
     const th = e.target.closest('th.sort'); if (th) { state.sort = th.dataset.k; pitcherTable(); return; }
-    const tr = e.target.closest('tr.click'); if (tr) { state.pid = tr.dataset.id; $('pitcher').value = state.pid; $('lastPitch').value = ''; $('lastSwing').value = ''; state.view = 'pitcher'; render(); window.scrollTo(0, 0); }
+    if (e.target.closest('#toScout')) { openScout(state.trendPid); return; }
+    if (e.target.closest('#toAll')) { state.trendPid = ''; renderLeague(); return; }
+    const tr = e.target.closest('tr.click'); if (tr) { state.trendPid = tr.dataset.id; renderLeague(); window.scrollTo(0, 0); }
   });
+  $('v-league').addEventListener('change', e => { if (e.target.id === 'trendPitcher') { state.trendPid = e.target.value; renderLeague(); } });
   $('pitcher').addEventListener('change', e => { state.pid = e.target.value; $('lastPitch').value = ''; $('lastSwing').value = ''; applyRoster(); renderPitcher(); });
   ['lastPitch', 'lastSwing'].forEach(id => $(id).addEventListener('input', renderRead));
   $('useLast').addEventListener('click', () => { const p = pitchers.get(state.pid); if (!p || !p.recs.length) return; const r = p.recs[p.recs.length - 1]; $('lastPitch').value = r.pitch; $('lastSwing').value = r.swing == null ? '' : r.swing; renderRead(); });
