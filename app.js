@@ -107,6 +107,34 @@
     });
     hit.addEventListener('mouseleave', () => xh.setAttribute('visibility', 'hidden'));
   }
+  const gamesOf = p => { const games = []; for (const r of p.recs) { const g = games[games.length - 1]; if (g && g.id === r.game) g.recs.push(r); else games.push({ id: r.game, recs: [r] }); } return games; };
+  // every pitch in order (oldest left), one band per game with a divider at each game break
+  function seqChart(el, p) {
+    const all = gamesOf(p), games = []; let total = 0;
+    for (let i = all.length - 1; i >= 0 && (total === 0 || total + all[i].recs.length <= 160); i--) { games.unshift(all[i]); total += all[i].recs.length; }
+    const W = 1000, H = 280, L = 40, R = 10, T = 24, B = 12, step = (W - L - R) / total, y = v => T + (H - T - B) * (1 - (v - 1) / 999);
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pitch numbers in order, split by game">`, dots = '', i = 0;
+    [1, 250, 500, 750, 1000].forEach(v => { s += `<line class="gridl" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 5}" y="${y(v) + 4}" text-anchor="end">${v}</text>`; });
+    games.forEach((g, gi) => {
+      const x0 = L + i * step, w = g.recs.length * step, f = g.recs[0], opp = [...new Set(g.recs.map(r => r.bteam).filter(Boolean))].join('/');
+      const name = `Season ${f.season} · Game ${esc(g.id.split('-')[1])}${opp ? ' · vs ' + esc(opp) : ''}`;
+      if (gi % 2 === 1) s += `<rect x="${x0}" y="${T}" width="${w}" height="${H - T - B}" fill="var(--text)" opacity=".045"/>`;
+      if (gi > 0) s += `<line x1="${x0}" x2="${x0}" y1="${T - 14}" y2="${H - B}" stroke="var(--text2)" stroke-width="1.5"/>`;
+      const short = `S${f.season} G${esc(g.id.split('-')[1])}`;
+      if (w > 44) s += `<text x="${x0 + 5}" y="${T - 6}" data-tip="${esc(name + ' · ' + g.recs.length + ' pitches')}">${w > 120 ? short + (opp ? ' vs ' + esc(opp) : '') : short}</text>`;
+      let d = '';
+      g.recs.forEach((r, k) => {
+        const cx = L + (i + 0.5) * step, cy = y(r.pitch), on = r.cls === 'hit' || r.cls === 'walk';
+        d += `${k ? 'L' : 'M'}${cx.toFixed(1)},${cy.toFixed(1)}`;
+        const t = `${name}<br>${esc(r.inning)} vs ${esc(r.hitter)}<br>Pitch <b>${r.pitch}</b>${r.swing == null ? '' : ', swing ' + r.swing + ', diff ' + G.cdist(r.pitch, r.swing)}<br>${esc(r.exact)}${k ? '' : ' · first pitch of the game'}`;
+        dots += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="4" fill="var(${on ? '--s2' : '--s1'})" stroke="var(--surface)" stroke-width="1.5"/><circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="9" fill="transparent" data-tip="${esc(t)}"/>`;
+        i++;
+      });
+      s += `<path d="${d}" fill="none" stroke="var(--s1)" stroke-width="1.5" opacity=".45" stroke-linejoin="round"/>`;
+    });
+    el.innerHTML = s + dots + '</svg>' +
+      `<div class="legend"><span><i style="border-radius:50%;width:10px"></i>Batter out (or steal attempt)</span><span><i style="border-radius:50%;width:10px;background:var(--s2)"></i>Batter reached base</span><span>Vertical lines and shading mark a new game${games.length < all.length ? '; showing the latest ' + games.length + ' of ' + all.length + ' games' : ''}</span></div>`;
+  }
   const share = (arr, n) => arr.map(v => n ? v / n : 0);
   const tile = (big, label, sub) => `<div class="tile"><b>${big}</b><span>${label}</span>${sub ? `<i>${sub}</i>` : ''}</div>`;
   const rangeTxt = z => z.from + '–' + z.to;
@@ -147,7 +175,7 @@
       <div class="card half"><h2>First pitch of a game</h2><p class="hint">${one ? 'Their' : "Each pitcher's"} opening number, by block of 100 (${L.firsts} opener${L.firsts === 1 ? '' : 's'}).</p><div id="lgFirst"></div>${leg('Openers')}</div>
       <div class="card half"><h2>After a hit, a walk or an out</h2><p class="hint">How far the next pitch moves depending on what the last one led to.</p><div class="scroll"><table id="lgAfter"></table></div></div>
       <div class="card half"><h2>Last digit of the pitch</h2><p class="hint">People are not random: some endings get picked more than others.</p><div id="lgDigit"></div><h2 style="margin-top:12px">${one ? 'Numbers thrown more than once' : 'Most repeated numbers'}</h2><div class="chips" id="lgTop"></div></div>
-      ${one ? '<div class="card"><h2>Latest pitches</h2><p class="hint">Newest first, one block per game. Moves are only measured within a game.</p><div class="scroll"><table id="lgLog"></table></div></div>' : ''}
+      ${one ? '<div class="card"><h2>Pitch by pitch, game by game</h2><p class="hint">Every pitch in the order it was thrown, oldest on the left. Remember 1 and 1000 are neighbours, so a jump from the top to the bottom can be a small move.</p><div id="lgSeq"></div></div><div class="card"><h2>Latest pitches</h2><p class="hint">Newest first, one block per game. Moves are only measured within a game.</p><div class="scroll"><table id="lgLog"></table></div></div>' : ''}
       <div class="card"><h2>Every pitcher</h2><p class="hint">Click a pitcher to see their trends. Click a column heading to sort.</p><div class="scroll"><table id="lgPitchers"></table></div></div>`;
     const even = n => new Array(n).fill(1 / n);
     bars($('lgHist'), { values: share(L.hist50, L.n), counts: L.hist50, labels: L.hist50.map((_, i) => (i * 50 + 1) + '–' + (i * 50 + 50)), short: L.hist50.map((_, i) => i * 50 + 1), ref: ref(league.hist50, league.n, even(20)), refName: one ? 'League' : 'Even spread', axis: 'Pitch number (block starts at)' });
@@ -157,13 +185,12 @@
     bars($('lgDigit'), { h: 150, values: share(L.endDigit, L.n), counts: L.endDigit, labels: L.endDigit.map((_, i) => 'Ends in ' + i), short: L.endDigit.map((_, i) => i), ref: ref(league.endDigit, league.n, even(10)), refName: one ? 'League' : 'Even spread' });
     afterTable($('lgAfter'), L, one ? league : null);
     $('lgTop').innerHTML = L.top.map(t => `<span class="chip">${t[0]} <small>×${t[1]}</small></span>`).join('') || '<span class="hint">No number has been thrown twice.</span>';
-    if (one) pitchLog($('lgLog'), one);
+    if (one) { seqChart($('lgSeq'), one); pitchLog($('lgLog'), one); }
     pitcherTable();
   }
   // Latest pitches, newest first, grouped under a heading for each game (whole games, until about 30 pitches are shown)
   function pitchLog(el, p) {
-    const games = [];
-    for (const r of p.recs) { const g = games[games.length - 1]; if (g && g.id === r.game) g.recs.push(r); else games.push({ id: r.game, recs: [r] }); }
+    const games = gamesOf(p);
     let shown = 0, html = '';
     for (let i = games.length - 1; i >= 0 && shown < 30; i--) {
       const g = games[i], f = g.recs[0], opp = [...new Set(g.recs.map(r => r.bteam).filter(Boolean))].join('/');
@@ -220,7 +247,7 @@
     bars($('pOff'), { values: share(S.offs50, S.offs), counts: S.offs50, labels: MOVE_LABELS, ref: share(league.offs50, league.offs), refName: 'League', axis: 'Distance from previous swing' });
     afterTable($('pAfter'), S, league);
     $('pTop').innerHTML = S.top.map(t => `<span class="chip">${t[0]} <small>×${t[1]}</small></span>`).join('') || '<span class="hint">None yet.</span>';
-    pitchLog($('pLog'), p);
+    seqChart($('pSeq'), p); pitchLog($('pLog'), p);
     renderRead();
   }
   function renderRead() {
