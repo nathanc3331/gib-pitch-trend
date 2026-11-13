@@ -95,8 +95,11 @@ ul.plain{margin:6px 0;padding-left:20px} ul.plain li{margin:3px 0}
       <h1>GIB <span>Pitch Trends</span></h1>
       <p class="sub">What GIB pitchers tend to throw next, from every pitch in the league's public PA log. <span id="updated"></span></p>
     </div>
-    <div class="seg" id="season" role="group" aria-label="Season">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn" id="refresh" disabled title="Load the newest Season 2 results straight from the league sheet">Refresh data</button>
+  <div class="seg" id="season" role="group" aria-label="Season">
       <button data-s="all" aria-pressed="true">Both seasons</button><button data-s="1" aria-pressed="false">Season 1</button><button data-s="2" aria-pressed="false">Season 2</button>
+      </div>
     </div>
   </header>
   <nav role="tablist">
@@ -190,7 +193,7 @@ ul.plain{margin:6px 0;padding-left:20px} ul.plain li{margin:3px 0}
     </div>
   </section>
 
-  <footer>Data: GIB league sheets (Season 1 and Season 2 PA Logs), copied here every two hours. Not an official league page.</footer>
+  <footer>Data: GIB league sheets (Season 1 and Season 2 PA Logs), copied here every two hours. Refresh data reads the current season straight from the league sheet. Not an official league page.</footer>
 </div>
 <div id="tip"></div>
 <script src="core.js"></script>

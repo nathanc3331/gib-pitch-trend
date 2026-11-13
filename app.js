@@ -31,19 +31,58 @@
     if (optional) return null;
     throw err;
   }
+  const RAW = { s1: null, s2: null, pl: null, pk: null };
+  function ingest() {
+    PAS = [...(RAW.s1 ? G.loadPA(RAW.s1, 1) : []), ...(RAW.s2 ? G.loadPA(RAW.s2, 2) : [])];
+    if (RAW.pl) PLAYERS = G.loadPlayers(RAW.pl);
+    if (RAW.pk) PARKS = G.loadParks(RAW.pk);
+    const keep = ['batter', 'park', 'hArch', 'hStars', 'pArch', 'pStars'].map(id => [id, $(id).value]);
+    initControls();
+    keep.forEach(([id, v]) => { if (v && [...$(id).options].some(o => o.value === v)) $(id).value = v; });
+    rebuild();
+  }
+  const stamp = d => d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
   async function load() {
     try {
       const [s1, s2, pl, pk, meta] = await Promise.all([getText('s1_pa.csv', true), getText('s2_pa.csv', true), getText('s2_players.csv', true), getText('s2_parks.csv', true), getText('meta.json', true)]);
       if (!s1 && !s2) throw new Error('no data files yet');
-      PAS = [...(s1 ? G.loadPA(s1, 1) : []), ...(s2 ? G.loadPA(s2, 2) : [])];
-      if (pl) PLAYERS = G.loadPlayers(pl);
-      if (pk) PARKS = G.loadParks(pk);
-      try { const u = meta && JSON.parse(meta).updated; if (u) $('updated').textContent = 'Data last changed ' + new Date(u).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + '.'; } catch (e) { }
-      $('status').hidden = true;
-      initControls(); rebuild();
+      Object.assign(RAW, { s1, s2, pl, pk });
+      try { const u = meta && JSON.parse(meta).updated; if (u) $('updated').textContent = 'Saved copy from ' + stamp(new Date(u)) + '.'; } catch (e) { }
+      $('status').hidden = true; $('refresh').disabled = false;
+      ingest();
     } catch (e) {
       $('status').textContent = 'The league data has not loaded. If this site was just set up, the first data copy may still be running; try again in a few minutes. (' + e.message + ')';
     }
+  }
+  // Refresh button: read the current-season tabs straight from the league's Google Sheet (same tabs the scheduled copy uses)
+  const S2_SHEET = '1eH3lgNQ-sXnuUV1QtRk26dRjp5ltXFNBeiScDYH__QU', SHEET = 'https://docs.google.com/spreadsheets/d/' + S2_SHEET;
+  const LIVE = [
+    ['s2', SHEET + '/export?format=csv&gid=692400938', ['Hitter', 'Hitter ID', 'Swing', 'Pitcher', 'Pitcher ID', 'Pitch'], 50],
+    ['pl', SHEET + '/gviz/tq?tqx=out:csv&headers=1&sheet=' + encodeURIComponent('Players (DO NOT EDIT)'), ['Player ID', 'Name', 'Team'], 20],
+    ['pk', SHEET + '/gviz/tq?tqx=out:csv&headers=1&sheet=' + encodeURIComponent('Parks and Teams (EDIT)'), ['Park Name', 'Team Name', 'Team'], 2]
+  ];
+  async function refresh() {
+    const btn = $('refresh'); btn.disabled = true; btn.textContent = 'Refreshing…';
+    const before = PAS.filter(p => p.season === 2).length;
+    const got = await Promise.all(LIVE.map(async ([key, url, head, min]) => {
+      try {
+        const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) return null;
+        const text = await r.text(), rows = G.parseCSV(text);
+        // only accept a download that looks like the right tab
+        if (!rows.length || head.some((h, i) => (rows[0][i] || '').trim() !== h) || rows.length - 1 < min) return null;
+        return [key, text];
+      } catch (e) { return null; }
+    }));
+    const pa = got.find(g => g && g[0] === 's2');
+    if (pa) {
+      got.forEach(g => { if (g) RAW[g[0]] = g[1]; });
+      ingest();
+      const added = PAS.filter(p => p.season === 2).length - before;
+      $('updated').textContent = `Refreshed from the league sheet at ${new Date().toLocaleTimeString([], { timeStyle: 'short' })}: ${added > 0 ? added + ' new plate appearance' + (added === 1 ? '' : 's') : 'nothing new since the saved copy'}.`;
+    } else {
+      $('updated').textContent = 'Could not reach the league sheet just now, so the page is still showing the copy it had.';
+    }
+    btn.disabled = false; btn.textContent = 'Refresh data';
   }
   function rebuild() {
     const pas = state.season === 'all' ? PAS : PAS.filter(p => String(p.season) === state.season);
@@ -342,5 +381,6 @@
   ['batter', 'clutch'].forEach(id => $(id).addEventListener('change', () => { applyRoster(); renderSwing(); }));
   ['park', 'hArch', 'hStars', 'pArch', 'pStars'].forEach(id => $(id).addEventListener('change', renderSwing));
 
+  $('refresh').addEventListener('click', refresh);
   load();
 })();
